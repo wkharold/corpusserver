@@ -2,27 +2,59 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/mail"
 	"os"
+	"path/filepath"
 )
 
 func main() {
-	mf, err := os.Open("/corpus/enron_mail_20110402/maildir/allen-p/_sent_mail/1.")
+	filepath.Walk("/corpus/enron_mail_20110402/maildir", func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			rdr, err := os.Open(path)
+			if err == nil {
+				msg, err := Format(rdr)
+				if err == nil {
+					fmt.Println(msg)
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func Format(msgrdr io.Reader) (string, error) {
+	msg, err := mail.ReadMessage(msgrdr)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return "", err
 	}
 
-	msg, err := mail.ReadMessage(mf)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	mb := new(bytes.Buffer)
 
-	fmt.Println(msg.Header)
 	scanner := bufio.NewScanner(msg.Body)
 	for scanner.Scan() {
-		fmt.Println(scanner.Text())
+		mb.WriteString(scanner.Text())
 	}
+
+	mm := make(map[string]interface{}, 2)
+	mm["body"] = mb.String()
+
+	hm := make(map[string]string)
+	for k, v := range msg.Header {
+		if len(v[0]) > 0 {
+			hm[k] = v[0]
+		}
+	}
+
+	mm["headers"] = hm
+
+	b, err := json.MarshalIndent(mm, "", "   ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
 }
