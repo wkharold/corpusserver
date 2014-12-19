@@ -20,6 +20,8 @@ type MbxMsg struct {
 }
 
 var (
+	Msgs   chan MbxMsg
+	Done   chan struct{}
 	schema ql.List
 	insmsg ql.List
 )
@@ -51,6 +53,10 @@ func init() {
 		panic(fmt.Sprintf("Can't create schema [%v]", err))
 	}
 	db.Close()
+
+	Msgs = make(chan MbxMsg)
+	Done = make(chan struct{})
+	go Cataloger(Msgs, Done)
 }
 
 func Cataloger(mc chan MbxMsg, done chan struct{}) {
@@ -64,7 +70,6 @@ loop:
 	for {
 		select {
 		case msg := <-mc:
-			fmt.Println(msg)
 			if _, _, err := db.Execute(ql.NewRWCtx(), insmsg, ql.MustMarshal(&msg)...); err != nil {
 				panic(fmt.Sprintf("Message insert failed [%v]", err))
 			}

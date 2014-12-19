@@ -4,30 +4,21 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/mail"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
-	"github.com/wkharold/corpusserver/catalog"
+	"github.com/wkharold/corpusserver/mailbox"
 )
 
 const MailDir = "/corpus/enron_mail_20110402/maildir"
 
 func main() {
-	mc := make(chan catalog.MbxMsg)
-	done := make(chan struct{})
+	var wg sync.WaitGroup
 
-	go catalog.Cataloger(mc, done)
-
-	mc <- catalog.MbxMsg{Mailbox: "lay-k", Folder: "inbox", Msgfile: "1."}
-	done <- struct{}{}
-}
-
-func mainer() {
 	filepath.Walk(MailDir, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			return nil
@@ -42,33 +33,12 @@ func mainer() {
 			return filepath.SkipDir
 		}
 
-		return IndexMailbox(rel)
-	})
-}
+		go mailbox.Catalog(MailDir, rel, &wg)
 
-func IndexMailbox(mbx string) error {
-	mbxpath := path.Join(MailDir, mbx)
-	filepath.Walk(mbxpath, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			return nil
-		}
-
-		rel, err := filepath.Rel(mbxpath, path)
-		if err != nil {
-			return err
-		}
-
-		if strings.Contains(rel, string(filepath.Separator)) {
-			return filepath.SkipDir
-		}
-
-		if rel != "." {
-			fmt.Printf("%s::%s\n", mbxpath, rel)
-		}
 		return nil
 	})
 
-	return nil
+	wg.Wait()
 }
 
 func Format(msgrdr io.Reader) (string, error) {
