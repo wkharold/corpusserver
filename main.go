@@ -8,22 +8,67 @@ import (
 	"io"
 	"net/mail"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
+
+	"github.com/wkharold/corpusserver/catalog"
 )
 
+const MailDir = "/corpus/enron_mail_20110402/maildir"
+
 func main() {
-	filepath.Walk("/corpus/enron_mail_20110402/maildir", func(path string, info os.FileInfo, err error) error {
+	mc := make(chan catalog.MbxMsg)
+	done := make(chan struct{})
+
+	go catalog.Cataloger(mc, done)
+
+	mc <- catalog.MbxMsg{Mailbox: "lay-k", Folder: "inbox", Msgfile: "1."}
+	done <- struct{}{}
+}
+
+func mainer() {
+	filepath.Walk(MailDir, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
-			rdr, err := os.Open(path)
-			if err == nil {
-				msg, err := Format(rdr)
-				if err == nil {
-					fmt.Println(msg)
-				}
-			}
+			return nil
+		}
+
+		rel, err := filepath.Rel(MailDir, path)
+		if err != nil {
+			return err
+		}
+
+		if strings.Contains(rel, string(filepath.Separator)) {
+			return filepath.SkipDir
+		}
+
+		return IndexMailbox(rel)
+	})
+}
+
+func IndexMailbox(mbx string) error {
+	mbxpath := path.Join(MailDir, mbx)
+	filepath.Walk(mbxpath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(mbxpath, path)
+		if err != nil {
+			return err
+		}
+
+		if strings.Contains(rel, string(filepath.Separator)) {
+			return filepath.SkipDir
+		}
+
+		if rel != "." {
+			fmt.Printf("%s::%s\n", mbxpath, rel)
 		}
 		return nil
 	})
+
+	return nil
 }
 
 func Format(msgrdr io.Reader) (string, error) {
